@@ -4,6 +4,7 @@ import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/cart_service.dart';
 import 'services/product_service.dart';
+import 'services/category_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,6 +20,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => CartService()),
         ChangeNotifierProvider(create: (_) => ProductService()),
+        ChangeNotifierProvider(create: (_) => CategoryService()),
       ],
       child: MaterialApp(
         title: 'Ecommerce',

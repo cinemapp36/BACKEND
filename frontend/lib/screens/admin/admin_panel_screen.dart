@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import '../../models/product.dart';
 import '../../services/product_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/category_service.dart';
 import 'product_form_screen.dart';
+import 'categories_screen.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
@@ -13,20 +15,6 @@ class AdminPanelScreen extends StatefulWidget {
 }
 
 class _AdminPanelScreenState extends State<AdminPanelScreen> {
-  final List<String> _categories = [
-    'Todos',
-    'Femenino',
-    'Masculino',
-    'Infantil',
-    'Deportes',
-    'Tenis Mujer',
-    'Tenis Hombre',
-    'Sneakers',
-    'Ropa Hombre',
-    'Ropa Mujer',
-    'Accesorios',
-  ];
-
   String _selectedCategory = 'Todos';
 
   @override
@@ -34,6 +22,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProductService>().fetchProducts(limit: 100);
+      context.read<CategoryService>().fetchCategories(adminAll: true);
     });
   }
 
@@ -72,9 +61,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
     if (confirm == true && mounted) {
       try {
-        await context
-            .read<ProductService>()
-            .deleteProduct(product.id);
+        await context.read<ProductService>().deleteProduct(product.id);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Producto eliminado')),
@@ -120,6 +107,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.category_outlined, color: Colors.white),
+            tooltip: 'Gestionar categorias',
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+              );
+              if (mounted) {
+                context.read<CategoryService>().fetchCategories(adminAll: true);
+              }
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               await context.read<AuthService>().logout();
@@ -151,8 +150,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           _StatsBar(),
           const SizedBox(height: 8),
           _CategoryFilterBar(
-            categories: _categories,
-            selected: _selectedCategory,
+            selectedCategory: _selectedCategory,
             onSelected: (cat) => setState(() => _selectedCategory = cat),
           ),
           const SizedBox(height: 4),
@@ -177,8 +175,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                         const SizedBox(height: 12),
                         Text(
                           'Sin productos en esta categoria',
-                          style: TextStyle(
-                              color: Colors.grey[400], fontSize: 15),
+                          style:
+                              TextStyle(color: Colors.grey[400], fontSize: 15),
                         ),
                       ],
                     ),
@@ -224,10 +222,8 @@ class _StatsBar extends StatelessWidget {
     return Consumer<ProductService>(
       builder: (_, service, __) {
         final total = service.products.length;
-        final categories = service.products
-            .map((p) => p.category)
-            .toSet()
-            .length;
+        final categories =
+            service.products.map((p) => p.category).toSet().length;
 
         return Container(
           color: Colors.white,
@@ -309,54 +305,61 @@ class _StatItem extends StatelessWidget {
 }
 
 class _CategoryFilterBar extends StatelessWidget {
-  final List<String> categories;
-  final String selected;
+  final String selectedCategory;
   final ValueChanged<String> onSelected;
 
   const _CategoryFilterBar({
-    required this.categories,
-    required this.selected,
+    required this.selectedCategory,
     required this.onSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 44,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          final cat = categories[index];
-          final isSelected = selected == cat;
-          return GestureDetector(
-            onTap: () => onSelected(cat),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.black : Colors.white,
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: isSelected
-                      ? Colors.black
-                      : const Color(0xFFDDDDDD),
+    return Consumer<ProductService>(
+      builder: (_, service, __) {
+        final usedCategories =
+            service.products.map((p) => p.category).toSet().toList();
+        usedCategories.sort();
+        final allCategories = ['Todos', ...usedCategories];
+
+        return SizedBox(
+          height: 44,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: allCategories.length,
+            itemBuilder: (context, index) {
+              final cat = allCategories[index];
+              final isSelected = selectedCategory == cat;
+              return GestureDetector(
+                onTap: () => onSelected(cat),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.black : Colors.white,
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: isSelected
+                          ? Colors.black
+                          : const Color(0xFFDDDDDD),
+                    ),
+                  ),
+                  child: Text(
+                    cat,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
-              ),
-              child: Text(
-                cat,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -481,13 +484,36 @@ class _ProductAdminCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    _formatPrice(product.price),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        _formatPrice(product.price),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
+                        ),
+                      ),
+                      if (product.discountPercent != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE91E63),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '-${product.discountPercent!.toInt()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),

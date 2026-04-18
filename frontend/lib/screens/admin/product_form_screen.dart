@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/product.dart';
 import '../../services/product_service.dart';
+import '../../services/category_service.dart';
 
 class ProductFormScreen extends StatefulWidget {
   final Product? product;
@@ -20,39 +21,33 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   final _priceController = TextEditingController();
   final _stockController = TextEditingController();
   final _imageUrlController = TextEditingController();
+  final _discountController = TextEditingController();
 
-  String _selectedCategory = 'Femenino';
+  String? _selectedCategory;
   bool _isLoading = false;
   String? _error;
-
-  final List<String> _categories = [
-    'Femenino',
-    'Masculino',
-    'Infantil',
-    'Deportes',
-    'Tenis Mujer',
-    'Tenis Hombre',
-    'Sneakers',
-    'Ropa Hombre',
-    'Ropa Mujer',
-    'Accesorios',
-  ];
 
   bool get _isEditing => widget.product != null;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CategoryService>().fetchCategories(adminAll: true);
+    });
+
     if (_isEditing) {
       _nameController.text = widget.product!.name;
       _descriptionController.text = widget.product!.description;
       _priceController.text = widget.product!.price.toStringAsFixed(0);
       _stockController.text = widget.product!.stock.toString();
-      _selectedCategory = _categories.contains(widget.product!.category)
-          ? widget.product!.category
-          : _categories.first;
+      _selectedCategory = widget.product!.category;
       if (widget.product!.images.isNotEmpty) {
         _imageUrlController.text = widget.product!.images.first;
+      }
+      if (widget.product!.discountPercent != null) {
+        _discountController.text =
+            widget.product!.discountPercent!.toStringAsFixed(0);
       }
     }
   }
@@ -64,17 +59,26 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     _priceController.dispose();
     _stockController.dispose();
     _imageUrlController.dispose();
+    _discountController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedCategory == null || _selectedCategory!.isEmpty) {
+      setState(() => _error = 'Selecciona una categoria');
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
+      final discountText = _discountController.text.trim();
+      final discount =
+          discountText.isNotEmpty ? double.tryParse(discountText) : null;
+
       final data = {
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
@@ -84,6 +88,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         'images': _imageUrlController.text.trim().isNotEmpty
             ? [_imageUrlController.text.trim()]
             : <String>[],
+        if (discount != null) 'discountPercent': discount,
+        if (discount == null && _isEditing) 'discountPercent': null,
       };
 
       final service = context.read<ProductService>();
@@ -107,7 +113,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         );
       }
     } catch (e) {
-      setState(() => _error = 'Error: ${e.toString().replaceAll('Exception: ', '')}');
+      setState(() =>
+          _error = 'Error: ${e.toString().replaceAll('Exception: ', '')}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -170,11 +177,49 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               _FormSection(
                 title: 'Categoria',
                 children: [
-                  _CategorySelector(
-                    categories: _categories,
-                    selected: _selectedCategory,
-                    onSelected: (cat) =>
-                        setState(() => _selectedCategory = cat),
+                  Consumer<CategoryService>(
+                    builder: (_, catService, __) {
+                      final cats = catService.categories;
+                      if (cats.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF8E1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  color: Colors.amber, size: 18),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'No hay categorias. Crea categorias desde el panel admin.',
+                                  style: TextStyle(
+                                      fontSize: 13, color: Colors.black87),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (_selectedCategory == null ||
+                          !cats.any((c) => c.name == _selectedCategory)) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            setState(() => _selectedCategory = cats.first.name);
+                          }
+                        });
+                      }
+
+                      return _CategorySelector(
+                        categories: cats.map((c) => c.name).toList(),
+                        selected: _selectedCategory ?? '',
+                        onSelected: (cat) =>
+                            setState(() => _selectedCategory = cat),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -220,6 +265,25 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+                  _FormField(
+                    controller: _discountController,
+                    label: 'Descuento % (opcional)',
+                    hint: 'Ej: 15',
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    suffixText: '%',
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return null;
+                      final val = int.tryParse(v);
+                      if (val == null || val < 0 || val > 100) {
+                        return 'Valor entre 0 y 100';
+                      }
+                      return null;
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -231,6 +295,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     label: 'URL de imagen',
                     hint: 'https://ejemplo.com/imagen.jpg',
                     keyboardType: TextInputType.url,
+                    onChanged: (_) => setState(() {}),
                   ),
                   if (_imageUrlController.text.isNotEmpty) ...[
                     const SizedBox(height: 10),
@@ -362,7 +427,9 @@ class _FormField extends StatelessWidget {
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
   final String? prefixText;
+  final String? suffixText;
   final String? Function(String?)? validator;
+  final ValueChanged<String>? onChanged;
 
   const _FormField({
     required this.controller,
@@ -372,7 +439,9 @@ class _FormField extends StatelessWidget {
     this.keyboardType,
     this.inputFormatters,
     this.prefixText,
+    this.suffixText,
     this.validator,
+    this.onChanged,
   });
 
   @override
@@ -395,9 +464,11 @@ class _FormField extends StatelessWidget {
           keyboardType: keyboardType,
           inputFormatters: inputFormatters,
           validator: validator,
+          onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
             prefixText: prefixText,
+            suffixText: suffixText,
             hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
             filled: true,
             fillColor: Colors.white,
@@ -460,8 +531,7 @@ class _CategorySelector extends StatelessWidget {
               color: isSelected ? Colors.black : Colors.white,
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
-                color:
-                    isSelected ? Colors.black : const Color(0xFFDDDDDD),
+                color: isSelected ? Colors.black : const Color(0xFFDDDDDD),
               ),
             ),
             child: Text(
